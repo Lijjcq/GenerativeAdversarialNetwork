@@ -90,7 +90,7 @@ def train(BATCH_SIZE):
     noise = np.zeros((BATCH_SIZE, 100))
 
     # For each epoch
-    for epoch in range(100):
+    for epoch in range(300):
         # Compute number of batches
         batchNb = int(X_train.shape[0]/BATCH_SIZE)
         print("Epoch is", epoch)
@@ -109,7 +109,7 @@ def train(BATCH_SIZE):
             generated_images = generator.predict(noise, verbose=0)
             
             # Save images to disk every 20 steps
-            if batchIndex % 2 == 0:
+            if batchIndex % 13 == 1:
                 saveGeneratedImages(generated_images, "{}_{}".format(epoch, batchIndex))
 
             # Create dataset for discriminator
@@ -131,7 +131,7 @@ def train(BATCH_SIZE):
             print("batch %d g_loss : %f" % (batchIndex, g_loss))
             
             # Save models every 100 steps
-            if batchIndex % batchNb/2 == 0:
+            if batchIndex % 100 == 9:
                 generator.save_weights('Models/generator', True)
                 discriminator.save_weights('Models/discriminator', True)
 

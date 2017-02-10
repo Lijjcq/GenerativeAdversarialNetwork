@@ -11,7 +11,7 @@ def combine_images(generated_images):
     for i in range(length):
         for j in range(length):
             generated_image = generated_images[i+length*j]
-            image[i:i+28,j:j+28,:] = generated_images[i+length*j]
+            image[i*28:i*28+28,j*28:j*28+28,:] = generated_images[i+length*j]
     return image
 
 # Saves 128 generates images on disk
