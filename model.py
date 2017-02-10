@@ -1,10 +1,16 @@
+""" Useful links
+    http://torch.ch/blog/2015/11/13/gan.html
+    https://github.com/Newmu/dcgan_code
+    https://github.com/soumith/ganhacks
+"""
+
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import Reshape
 from keras.layers.core import Activation
-from keras.layers.normalization import BatchNormalization
+from keras.layers.core import Dropout
 from keras.layers.convolutional import UpSampling2D
-from keras.layers.convolutional import Convolution2D, MaxPooling2D
+from keras.layers.convolutional import Convolution2D, AveragePooling2D
 from keras.layers.core import Flatten
 from keras.optimizers import SGD
 import tensorflow as tf
@@ -13,7 +19,7 @@ tf.python.control_flow_ops = tf
 import numpy as np
 from PIL import Image
 from imageTools import saveGeneratedImages
-from datasetTools import load_dataset
+from datasetTools import load_dataset, addNoise
 
 import cv2
 import os
@@ -22,20 +28,22 @@ import os
 def generator_model():
     model = Sequential()
     model.add(Dense(input_dim=100, output_dim=1024))
-    model.add(Activation('tanh'))
+    model.add(Activation('elu'))
+    model.add(Dropout(0.4))
     # Prepare for 7x7 image with 128 channels
     model.add(Dense(7*7*128))
-    model.add(BatchNormalization())
-    model.add(Activation('tanh'))
+    model.add(Activation('elu'))
+    model.add(Dropout(0.4))
     # Reshape flat to image
     model.add(Reshape((7, 7, 128), input_shape=(7*7*128,)))
     # Upsample + conv
     model.add(UpSampling2D(size=(2, 2)))
     model.add(Convolution2D(64, 5, 5, border_mode='same'))
-    model.add(Activation('tanh'))
+    model.add(Activation('elu'))
+    model.add(Dropout(0.4))
     # Upsample + conv
     model.add(UpSampling2D(size=(2, 2)))
-    model.add(Convolution2D(4, 5, 5, border_mode='same'))
+    model.add(Convolution2D(3, 5, 5, border_mode='same'))
     model.add(Activation('tanh'))
     return model
 
@@ -43,17 +51,20 @@ def generator_model():
 def discriminator_model():
     model = Sequential()
     # Conv + pool
-    model.add(Convolution2D(64, 5, 5, border_mode='same', input_shape=(28, 28, 4)))
-    model.add(Activation('tanh'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Convolution2D(64, 5, 5, border_mode='same', input_shape=(28, 28, 3)))
+    model.add(Activation('elu'))
+    model.add(AveragePooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.6))
     # Conv + pool
     model.add(Convolution2D(128, 5, 5))
-    model.add(Activation('tanh'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Activation('elu'))
+    model.add(AveragePooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.6))
     # Fully connected
     model.add(Flatten())
     model.add(Dense(1024))
-    model.add(Activation('tanh'))
+    model.add(Activation('elu'))
+    model.add(Dropout(0.6))
     model.add(Dense(1))
     model.add(Activation('sigmoid'))
     return model
@@ -87,6 +98,12 @@ def train(BATCH_SIZE):
     discriminator.compile(loss='binary_crossentropy', optimizer=d_optim)
     
     # Prepare 100D noise matrix for each batch
+    # We keep the same noise to follow the generation
+    displayNoise = np.zeros((BATCH_SIZE, 100))
+    for i in range(BATCH_SIZE):
+        displayNoise[i, :] = np.random.uniform(-1, 1, 100)
+            
+    # Prepare 100D noise matrix for each batch
     noise = np.zeros((BATCH_SIZE, 100))
 
     # For each epoch
@@ -98,42 +115,49 @@ def train(BATCH_SIZE):
         
         # For each batch
         for batchIndex in range(batchNb):
-            # Generate noise for each sample in batch
+
+            # Save images to disk every N steps
+            if batchIndex % 20 == 1:
+                generated_images = generator.predict(displayNoise, verbose=0)
+                saveGeneratedImages(generated_images, "{}_{}".format(epoch, batchIndex))
+
+
+            ##### DISCRIMINATOR TRAINING #####
+            # Generate new noise for discriminator training
             for i in range(BATCH_SIZE):
                 noise[i, :] = np.random.uniform(-1, 1, 100)
             
-            # Get image batch from data
-            image_batch = X_train[batchIndex*BATCH_SIZE:(batchIndex+1)*BATCH_SIZE]
-            
+            # Get real image batch from data
+            real_images = X_train[batchIndex*BATCH_SIZE:(batchIndex+1)*BATCH_SIZE]
+            # Add noise to make it harder for discriminator
+            X = addNoise(real_images)
+            y = np.ones(BATCH_SIZE)
+            # Train on real images
+            d_loss_real = discriminator.train_on_batch(X, y)
+
             # Generate a batch of fake images
             generated_images = generator.predict(noise, verbose=0)
-            
-            # Save images to disk every 20 steps
-            if batchIndex % 13 == 1:
-                saveGeneratedImages(generated_images, "{}_{}".format(epoch, batchIndex))
+            # Add noise to make it harder for discriminator
+            X = addNoise(generated_images)
+            y = np.zeros(BATCH_SIZE)
+            # Train on fake iimages
+            d_loss_fake = discriminator.train_on_batch(X, y)
 
-            # Create dataset for discriminator
-            X = np.concatenate((image_batch, generated_images))
-            y = [1] * BATCH_SIZE + [0] * BATCH_SIZE
-
-            # Train discriminator on batch
-            d_loss = discriminator.train_on_batch(X, y)
-            print("batch %d d_loss : %f" % (batchIndex, d_loss))
-
-            # Generate new noise for each sample in batch
+            ##### GENERATOR TRAINING #####
+            # Generate new noise for generator training
             for i in range(BATCH_SIZE):
                 noise[i, :] = np.random.uniform(-1, 1, 100)
 
             # Train generator on real batch
             discriminator.trainable = False
-            g_loss = discriminator_on_generator.train_on_batch(noise, [1] * BATCH_SIZE)
+            g_loss = discriminator_on_generator.train_on_batch(noise, np.ones(BATCH_SIZE))
             discriminator.trainable = True
-            print("batch %d g_loss : %f" % (batchIndex, g_loss))
+            print("Epoch %d, batch %d, g_loss : %f, d_loss_true: %f, d_loss_fake: %f" % (epoch, batchIndex, g_loss, d_loss_real, d_loss_fake))
             
-            # Save models every 100 steps
-            if batchIndex % 100 == 9:
-                generator.save_weights('Models/generator', True)
-                discriminator.save_weights('Models/discriminator', True)
+        #Save model every epoch
+        print("Saving models...")
+        generator.save_weights('Models/generator', True)
+        discriminator.save_weights('Models/discriminator', True)
 
 # Generates new samples
 def generate(BATCH_SIZE, nice=False):
