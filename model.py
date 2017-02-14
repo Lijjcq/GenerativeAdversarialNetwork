@@ -76,6 +76,7 @@ def discriminator_model():
     model.add(Convolution2D(32, 5, 5, border_mode='same'))
     model.add(Activation('elu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.3))
 
     # Conv + pool
     model.add(Convolution2D(64, 5, 5, border_mode='same'))
@@ -117,7 +118,7 @@ def train(BATCH_SIZE):
     
     # Create optimizers for generator and discriminator
     d_optim = SGD(lr=0.0005, momentum=0.9, nesterov=True)
-    g_optim = Adam(lr=0.005)
+    g_optim = Adam(lr=0.0005)
     
     # Compile models with optimizers
     generator.compile(loss='binary_crossentropy', optimizer="SGD")
@@ -127,16 +128,16 @@ def train(BATCH_SIZE):
     
     # Prepare 100D noise matrix for each batch
     # We keep the same noise to follow the generation
-    displayNoise = np.zeros((9, 100))
-    for i in range(9):
-        displayNoise[i, :] = np.random.uniform(-1, 1, 100)
-            
-    # Prepare 100D noise matrix for each batch
-    noise = np.zeros((BATCH_SIZE, 100))
+    displayNoise = np.random.uniform(-1, 1, (9, 100))
+        
+    # Torch.ch heuristic for training
+    lossMargin = 0.3
+    discriminator.trainable = True
+    generator.trainable = True
 
-    trainGenerator = True
-    trainDiscrimnator = True
-    lossMargin = 0.4
+    d_loss_real = -1
+    d_loss_fake = -1
+    g_loss = -1
 
     # For each epoch
     for epoch in range(300):
@@ -154,15 +155,14 @@ def train(BATCH_SIZE):
 
             ##### DISCRIMINATOR TRAINING #####
             # Generate new noise for discriminator training
-            for i in range(BATCH_SIZE):
-                noise[i, :] = np.random.uniform(-1, 1, 100)
-            
+            noise = np.random.uniform(-1, 1, (BATCH_SIZE, 100))
+
             # Get real image batch from data
             real_images = X_train[batchIndex*BATCH_SIZE:(batchIndex+1)*BATCH_SIZE]
             # Add noise to make it harder for discriminator
             X = addNoise(real_images)
             y = np.ones(BATCH_SIZE)
-            # Train on real images
+            # Train on real images, or just compute loss if not trainable
             d_loss_real = discriminator.train_on_batch(X, y)
 
             # Generate a batch of fake images
@@ -170,37 +170,47 @@ def train(BATCH_SIZE):
             # Add noise to make it harder for discriminator
             X = addNoise(generated_images)
             y = np.zeros(BATCH_SIZE)
-            # Train on fake iimages
+            # Train on fake images, or just compute loss if not trainable
             d_loss_fake = discriminator.train_on_batch(X, y)
+
 
             ##### GENERATOR TRAINING #####
             # Generator is trained twice because the discriminator is
             for i in range(2):
                 # Generate new noise for generator training
-                for i in range(BATCH_SIZE):
-                    noise[i, :] = np.random.uniform(-1, 1, 100)
+                noise = np.random.uniform(-1, 1, (BATCH_SIZE, 100))
 
-                # Train generator on real batch
+                shouldDiscriminatorBeTrained = discriminator.trainable
+                # Always put as not trainable
                 discriminator.trainable = False
+                # Train generator on real batch, or just compute loss if not trainable
                 g_loss = discriminator_on_generator.train_on_batch(noise, np.ones(BATCH_SIZE))
-                discriminator.trainable = True
+                # Restore true value of trainable
+                discriminator.trainable = shouldDiscriminatorBeTrained
 
             
             print("Epoch %d, batch %d, g_loss : %f, d_loss_true: %f, d_loss_fake: %f" % (epoch, batchIndex, g_loss, d_loss_real, d_loss_fake))
             
+            # Assume both should be trained good
+            discriminator.trainable = True
+            generator.trainable = True
+
             # Heuristic from Torch.ch
             # Discriminator too powerful
-            if d_loss_fake < margin or d_loss_real < margin:
-                trainDiscrimnator = False
+            if d_loss_fake < lossMargin or d_loss_real < lossMargin:
+                print "Stopping D for next update"
+                discriminator.trainable = False
             
             # Discriminator too weak
-            if d_loss_fake > (1.0-margin) or d_loss_real > (1.0-margin) then
-                trainGenerator = False
+            if d_loss_fake > (1.0-lossMargin) or d_loss_real > (1.0-lossMargin):
+                print "Stopping G for next update"
+                generator.trainable = False
             
             # Both are too good, train both
-            if not trainDiscrimnator and not trainGenerator:
-                trainDiscrimnator = True
-                trainGenerator = True
+            if not discriminator.trainable and not generator.trainable:
+                print "Starting G and D"
+                discriminator.trainable = True
+                generator.trainable = True
 
         #Save model every epoch
         print("Saving models...")
@@ -222,9 +232,7 @@ def generate(BATCH_SIZE, nice=False):
         discriminator.load_weights('Models/discriminator')
         
         # Create noise for each batch
-        noise = np.zeros((BATCH_SIZE*20, 100))
-        for i in range(BATCH_SIZE*20):
-            noise[i, :] = np.random.uniform(-1, 1, 100)
+        noise = np.random.uniform(-1, 1, [BATCH_SIZE*20, 100])
 
         # Generate image batches based on noise
         generated_images = generator.predict(noise, verbose=1)
@@ -242,10 +250,8 @@ def generate(BATCH_SIZE, nice=False):
         image = combine_images(nice_images)
     else:
         # Create noise for each batch
-        noise = np.zeros((BATCH_SIZE, 100))
-        for i in range(BATCH_SIZE):
-            noise[i, :] = np.random.uniform(-1, 1, 100)
-        
+        noise = np.random.uniform(-1, 1, (BATCH_SIZE, 100))
+
         # Generate image batches based on noise
         generated_images = generator.predict(noise, verbose=1)
         
