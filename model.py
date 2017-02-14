@@ -11,9 +11,9 @@ from keras.layers import Reshape
 from keras.layers.core import Activation
 from keras.layers.core import Dropout
 from keras.layers.convolutional import UpSampling2D
-from keras.layers.convolutional import Convolution2D, AveragePooling2D
+from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.core import Flatten
-from keras.optimizers import SGD
+from keras.optimizers import SGD, Adam
 import tensorflow as tf
 tf.python.control_flow_ops = tf
 
@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image
 from imageTools import saveGeneratedImages
 from datasetTools import load_dataset, addNoise
+from config import imageSize
 
 import cv2
 import os
@@ -31,17 +32,31 @@ def generator_model():
     model.add(Dense(input_dim=100, output_dim=1024))
     model.add(Activation('elu'))
     model.add(Dropout(0.4))
-    # Prepare for 7x7 image with 128 channels
-    model.add(Dense(7*7*128))
+
+    # Prepare for 128/8=8 image with 128 channels
+    model.add(Dense(imageSize/16*imageSize/16*128))
     model.add(Activation('elu'))
     model.add(Dropout(0.4))
+
     # Reshape flat to image
-    model.add(Reshape((7, 7, 128), input_shape=(7*7*128,)))
-    # Upsample + conv
+    model.add(Reshape([imageSize/16,imageSize/16, 128]))
+
+    # Upsample + conv to imageSize/8
     model.add(UpSampling2D(size=(2, 2)))
     model.add(Convolution2D(64, 5, 5, border_mode='same'))
     model.add(Activation('elu'))
+
+    # Upsample + conv to imageSize/4
+    model.add(UpSampling2D(size=(2, 2)))
+    model.add(Convolution2D(32, 5, 5, border_mode='same'))
+    model.add(Activation('elu'))
+
+    # Upsample + conv to imageSize/2
+    model.add(UpSampling2D(size=(2, 2)))
+    model.add(Convolution2D(16, 5, 5, border_mode='same'))
+    model.add(Activation('elu'))
     model.add(Dropout(0.4))
+
     # Upsample + conv
     model.add(UpSampling2D(size=(2, 2)))
     model.add(Convolution2D(3, 5, 5, border_mode='same'))
@@ -52,15 +67,27 @@ def generator_model():
 def discriminator_model():
     model = Sequential()
     # Conv + pool
-    model.add(Convolution2D(64, 5, 5, border_mode='same', input_shape=(28, 28, 3)))
+    model.add(Convolution2D(16, 5, 5, border_mode='same', input_shape=(imageSize, imageSize, 3)))
     model.add(Activation('elu'))
-    model.add(AveragePooling2D(pool_size=(2, 2)))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.6))
+
     # Conv + pool
-    model.add(Convolution2D(128, 5, 5))
+    model.add(Convolution2D(32, 5, 5, border_mode='same'))
     model.add(Activation('elu'))
-    model.add(AveragePooling2D(pool_size=(2, 2)))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+
+    # Conv + pool
+    model.add(Convolution2D(64, 5, 5, border_mode='same'))
+    model.add(Activation('elu'))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+
+    # Conv + pool
+    model.add(Convolution2D(128, 5, 5, border_mode='same'))
+    model.add(Activation('elu'))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.6))
+
     # Fully connected
     model.add(Flatten())
     model.add(Dense(1024))
@@ -90,7 +117,7 @@ def train(BATCH_SIZE):
     
     # Create optimizers for generator and discriminator
     d_optim = SGD(lr=0.0005, momentum=0.9, nesterov=True)
-    g_optim = SGD(lr=0.0005, momentum=0.9, nesterov=True)
+    g_optim = Adam(lr=0.005)
     
     # Compile models with optimizers
     generator.compile(loss='binary_crossentropy', optimizer="SGD")
@@ -100,12 +127,16 @@ def train(BATCH_SIZE):
     
     # Prepare 100D noise matrix for each batch
     # We keep the same noise to follow the generation
-    displayNoise = np.zeros((BATCH_SIZE, 100))
-    for i in range(BATCH_SIZE):
+    displayNoise = np.zeros((9, 100))
+    for i in range(9):
         displayNoise[i, :] = np.random.uniform(-1, 1, 100)
             
     # Prepare 100D noise matrix for each batch
     noise = np.zeros((BATCH_SIZE, 100))
+
+    trainGenerator = True
+    trainDiscrimnator = True
+    lossMargin = 0.4
 
     # For each epoch
     for epoch in range(300):
@@ -117,11 +148,9 @@ def train(BATCH_SIZE):
         # For each batch
         for batchIndex in range(batchNb):
 
-            # Save images to disk every N steps
-            if batchIndex % 20 == 1:
-                generated_images = generator.predict(displayNoise, verbose=0)
-                saveGeneratedImages(generated_images, "{}_{}".format(epoch, batchIndex))
-
+            # Save images to disk every batch
+            generated_images = generator.predict(displayNoise, verbose=0)
+            saveGeneratedImages(generated_images, "{}_{}".format(epoch, batchIndex))
 
             ##### DISCRIMINATOR TRAINING #####
             # Generate new noise for discriminator training
@@ -145,16 +174,34 @@ def train(BATCH_SIZE):
             d_loss_fake = discriminator.train_on_batch(X, y)
 
             ##### GENERATOR TRAINING #####
-            # Generate new noise for generator training
-            for i in range(BATCH_SIZE):
-                noise[i, :] = np.random.uniform(-1, 1, 100)
+            # Generator is trained twice because the discriminator is
+            for i in range(2):
+                # Generate new noise for generator training
+                for i in range(BATCH_SIZE):
+                    noise[i, :] = np.random.uniform(-1, 1, 100)
 
-            # Train generator on real batch
-            discriminator.trainable = False
-            g_loss = discriminator_on_generator.train_on_batch(noise, np.ones(BATCH_SIZE))
-            discriminator.trainable = True
+                # Train generator on real batch
+                discriminator.trainable = False
+                g_loss = discriminator_on_generator.train_on_batch(noise, np.ones(BATCH_SIZE))
+                discriminator.trainable = True
+
+            
             print("Epoch %d, batch %d, g_loss : %f, d_loss_true: %f, d_loss_fake: %f" % (epoch, batchIndex, g_loss, d_loss_real, d_loss_fake))
             
+            # Heuristic from Torch.ch
+            # Discriminator too powerful
+            if d_loss_fake < margin or d_loss_real < margin:
+                trainDiscrimnator = False
+            
+            # Discriminator too weak
+            if d_loss_fake > (1.0-margin) or d_loss_real > (1.0-margin) then
+                trainGenerator = False
+            
+            # Both are too good, train both
+            if not trainDiscrimnator and not trainGenerator:
+                trainDiscrimnator = True
+                trainGenerator = True
+
         #Save model every epoch
         print("Saving models...")
         generator.save_weights('Models/generator', True)
