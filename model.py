@@ -135,10 +135,6 @@ def train(BATCH_SIZE):
     discriminator.trainable = True
     generator.trainable = True
 
-    d_loss_real = -1
-    d_loss_fake = -1
-    g_loss = -1
-
     # For each epoch
     for epoch in range(300):
         # Compute number of batches
@@ -187,7 +183,6 @@ def train(BATCH_SIZE):
                 g_loss = discriminator_on_generator.train_on_batch(noise, np.ones(BATCH_SIZE))
                 # Restore true value of trainable
                 discriminator.trainable = shouldDiscriminatorBeTrained
-
             
             print("Epoch %d, batch %d, g_loss : %f, d_loss_true: %f, d_loss_fake: %f" % (epoch, batchIndex, g_loss, d_loss_real, d_loss_fake))
             
