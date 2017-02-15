@@ -2,7 +2,8 @@ import numpy as np
 import math
 from PIL import Image
 import cv2
-from config import imageSize
+from config import imageSize, generatedImagesPath
+
 # Puts generated images in a grid for display
 def combine_images(generated_images):
     nbImages = generated_images.shape[0]
@@ -19,4 +20,4 @@ def combine_images(generated_images):
 def saveGeneratedImages(generated_images, name):
     img = combine_images(generated_images)
     img = img*255.
-    cv2.imwrite("Images/"+name+".png",img.astype(np.uint8))
+    cv2.imwrite(generatedImagesPath+name+".png",img.astype(np.uint8))

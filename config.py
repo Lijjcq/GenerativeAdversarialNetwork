@@ -1,3 +1,4 @@
 imageSize = 128
 
-datasetPath = "Datasets/"
+datasetPath = "Dataset/"
+generatedImagesPath = "GeneratedImages/"

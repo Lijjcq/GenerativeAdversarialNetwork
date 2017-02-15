@@ -20,7 +20,7 @@ tf.python.control_flow_ops = tf
 import numpy as np
 from PIL import Image
 from imageTools import saveGeneratedImages
-from datasetTools import load_dataset, addNoise
+from datasetTools import loadDataset, addNoise
 from config import imageSize
 
 import cv2
@@ -107,9 +107,9 @@ def generator_containing_discriminator(generator, discriminator):
     return model
 
 # Trains GAN
-def train(BATCH_SIZE):
+def train(batchSize):
     # Load data
-    X_train = load_dataset()
+    X_train = loadDataset()
     
     # Create models
     discriminator = discriminator_model()
@@ -135,10 +135,11 @@ def train(BATCH_SIZE):
     discriminator.trainable = True
     generator.trainable = True
 
+    # Compute number of batches
+    batchNb = int(X_train.shape[0]/batchSize)
+
     # For each epoch
     for epoch in range(300):
-        # Compute number of batches
-        batchNb = int(X_train.shape[0]/BATCH_SIZE)
         print("Epoch is", epoch)
         print("Number of batches", batchNb)
         
@@ -151,13 +152,13 @@ def train(BATCH_SIZE):
 
             ##### DISCRIMINATOR TRAINING #####
             # Generate new noise for discriminator training
-            noise = np.random.uniform(-1, 1, (BATCH_SIZE, 100))
+            noise = np.random.uniform(-1, 1, (batchSize, 100))
 
             # Get real image batch from data
-            real_images = X_train[batchIndex*BATCH_SIZE:(batchIndex+1)*BATCH_SIZE]
+            real_images = X_train[batchIndex*batchSize:(batchIndex+1)*batchSize]
             # Add noise to make it harder for discriminator
             X = addNoise(real_images)
-            y = np.ones(BATCH_SIZE)
+            y = np.ones(batchSize)
             # Train on real images, or just compute loss if not trainable
             d_loss_real = discriminator.train_on_batch(X, y)
 
@@ -165,7 +166,7 @@ def train(BATCH_SIZE):
             generated_images = generator.predict(noise, verbose=0)
             # Add noise to make it harder for discriminator
             X = addNoise(generated_images)
-            y = np.zeros(BATCH_SIZE)
+            y = np.zeros(batchSize)
             # Train on fake images, or just compute loss if not trainable
             d_loss_fake = discriminator.train_on_batch(X, y)
 
@@ -174,13 +175,13 @@ def train(BATCH_SIZE):
             # Generator is trained twice because the discriminator is
             for i in range(2):
                 # Generate new noise for generator training
-                noise = np.random.uniform(-1, 1, (BATCH_SIZE, 100))
+                noise = np.random.uniform(-1, 1, (batchSize, 100))
 
                 shouldDiscriminatorBeTrained = discriminator.trainable
                 # Always put as not trainable
                 discriminator.trainable = False
                 # Train generator on real batch, or just compute loss if not trainable
-                g_loss = discriminator_on_generator.train_on_batch(noise, np.ones(BATCH_SIZE))
+                g_loss = discriminator_on_generator.train_on_batch(noise, np.ones(batchSize))
                 # Restore true value of trainable
                 discriminator.trainable = shouldDiscriminatorBeTrained
             
@@ -213,7 +214,7 @@ def train(BATCH_SIZE):
         discriminator.save_weights('Models/discriminator', True)
 
 # Generates new samples
-def generate(BATCH_SIZE, nice=False):
+def generate(batchSize, nice=False):
     # Create, compile and load generator
     generator = generator_model()
     generator.compile(loss='binary_crossentropy', optimizer="SGD")
@@ -227,25 +228,25 @@ def generate(BATCH_SIZE, nice=False):
         discriminator.load_weights('Models/discriminator')
         
         # Create noise for each batch
-        noise = np.random.uniform(-1, 1, [BATCH_SIZE*20, 100])
+        noise = np.random.uniform(-1, 1, [batchSize*20, 100])
 
         # Generate image batches based on noise
         generated_images = generator.predict(noise, verbose=1)
         d_pret = discriminator.predict(generated_images, verbose=1)
-        index = np.arange(0, BATCH_SIZE*20)
-        index.resize((BATCH_SIZE*20, 1))
+        index = np.arange(0, batchSize*20)
+        index.resize((batchSize*20, 1))
         pre_with_index = list(np.append(d_pret, index, axis=1))
         pre_with_index.sort(key=lambda x: x[0], reverse=True)
 
         # Placeholder for images
-        nice_images = np.zeros((BATCH_SIZE, 1) + (generated_images.shape[2:]), dtype=np.float32)
-        for i in range(int(BATCH_SIZE)):
+        nice_images = np.zeros((batchSize, 1) + (generated_images.shape[2:]), dtype=np.float32)
+        for i in range(int(batchSize)):
             idx = int(pre_with_index[i][1])
             nice_images[i, 0, :, :] = generated_images[idx, 0, :, :]
         image = combine_images(nice_images)
     else:
         # Create noise for each batch
-        noise = np.random.uniform(-1, 1, (BATCH_SIZE, 100))
+        noise = np.random.uniform(-1, 1, (batchSize, 100))
 
         # Generate image batches based on noise
         generated_images = generator.predict(noise, verbose=1)
