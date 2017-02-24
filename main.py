@@ -1,3 +1,10 @@
+""" 
+Useful links
+http://torch.ch/blog/2015/11/13/gan.html
+https://github.com/Newmu/dcgan_code
+https://github.com/soumith/ganhacks
+"""
+
 import argparse
 from model import getGenerator, getDiscriminator, getGeneratorContainingDiscriminator
 from datasetTools import loadDataset, getTrueLabels, getFakeLabels
@@ -88,7 +95,7 @@ def train(batchSize):
                 # Generate new noise for generator training
                 noise = np.random.uniform(-1, 1, (batchSize, 100))
                 # Trick: max(log(D)) instead of (min(log(1-D)))
-                y = getFakeLabels(batchSize) #getTrueLabels(batchSize)
+                y = getTrueLabels(batchSize, flipped=True)
                 shouldDiscriminatorBeTrained = discriminator.trainable
                 # Always put as not trainable
                 discriminator.trainable = False
@@ -97,7 +104,7 @@ def train(batchSize):
                 # Restore true value of trainable
                 discriminator.trainable = shouldDiscriminatorBeTrained
             
-            print("Epoch %d, batch %d, g_loss : %f, d_loss_true: %f, d_loss_fake: %f" % (epoch, batchIndex, g_loss, d_loss_real, d_loss_fake))
+            print("Epoch {}/{} - Batch {}/{} - (G: {:.3f}) - (D_true: {:.3f}, D_fake: {:.3f})".format(epoch+1, epochNb, batchIndex+1, batchNb, g_loss, d_loss_real, d_loss_fake))
             
             # Assume both should be trained good
             discriminator.trainable = True

@@ -21,7 +21,6 @@ def loadDataset():
         return None
 
 # Add noise to batch
-# TODO VERIFY FOR TANH
 def addNoise(imgBatch):
     noise = np.zeros(imgBatch.shape[1:], np.float)
     for i in range(imgBatch.shape[0]):
@@ -40,12 +39,14 @@ def visualizeDataset(X):
         cv2.waitKey()
 
 # Soft labels
-def getTrueLabels(batchSize):
-    return np.random.uniform(.7, 1., (batchSize))
+def getTrueLabels(batchSize, flipped=False):
+    if flipped:
+        return getFakeLabels(batchSize)
+    return np.random.uniform(.8, 1., (batchSize))
 
 # Soft labels
 def getFakeLabels(batchSize):
-    return np.random.uniform(.7, 1., (batchSize))
+    return np.random.uniform(0., .2, (batchSize))
 
 if __name__ == "__main__":
     X_train, _ = loadDataset()
