@@ -39,15 +39,31 @@ def visualizeDataset(X):
         cv2.waitKey()
 
 # Soft labels
-def getTrueLabels(batchSize, flipped=False):
+def getTrueLabels(batchSize, soft=False, flipped=False):
     if flipped:
-        return getFakeLabels(batchSize)
-    return np.random.uniform(.8, 1., (batchSize))
+        return getFakeLabels(batchSize, soft=soft)
+    else:
+        if soft:
+            return np.random.uniform(.8, 1., batchSize)
+        else:
+            return np.ones(batchSize)
 
 # Soft labels
-def getFakeLabels(batchSize):
-    return np.random.uniform(0., .2, (batchSize))
-
+def getFakeLabels(batchSize, soft=False):
+    if soft:
+        return np.random.uniform(0., .2, (batchSize))
+    else:
+        return np.zeros(batchSize)
+        
 if __name__ == "__main__":
     X_train, _ = loadDataset()
     visualizeDataset(X_train)
+
+
+
+
+
+
+
+
+

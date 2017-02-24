@@ -14,14 +14,6 @@ from keras.optimizers import SGD, Adam
 from imageTools import saveGeneratedImages, toData, toImage
 from datasetTools import loadDataset, addNoise
 
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", type=str)
-    parser.add_argument("--batchSize", type=int, default=128)
-    parser.set_defaults(nice=False)
-    args = parser.parse_args()
-    return args
-
 # Trains GAN
 def train(batchSize):
     # Load data
@@ -44,7 +36,8 @@ def train(batchSize):
     
     # Prepare 100D noise matrix for each batch
     # We keep the same noise to follow the generation
-    displayNoise = np.random.normal(0, 1, (9, 100))
+    displayImageNb = 25
+    displayNoise = np.random.normal(0., 1., (displayImageNb, 100))
         
     # Torch.ch heuristic for training
     lossMargin = 0.3
@@ -57,12 +50,20 @@ def train(batchSize):
 
     print("Starting training for {} epochs with {} batches of size {}".format(epochNb, batchNb, batchSize))
 
+    # Gan hacks tricks
+    # Flipped labels trick: max(log(D)) instead of min(log(1-D))
+    flipLabels = False
+    # Soft labels
+    softLabels = True
+    # Add noise for discriminator
+    addNoiseToDiscriminator = True
+
     # For each epoch
     for epoch in range(epochNb):        
         # For each batch
         for batchIndex in range(batchNb):
 
-            # Save images to disk every batch
+            # Save generated images to disk every batch
             generated_images = generator.predict(displayNoise, verbose=0)
             saveGeneratedImages(generated_images, "{}_{}".format(epoch, batchIndex))
 
@@ -70,8 +71,8 @@ def train(batchSize):
             # Get real image batch from data
             real_images = X_train[batchIndex*batchSize:(batchIndex+1)*batchSize]
             # Add noise to make it harder for discriminator
-            X = addNoise(real_images)
-            y = getTrueLabels(batchSize) 
+            X = addNoise(real_images) if addNoiseToDiscriminator else real_images
+            y = getTrueLabels(batchSize, soft=softLabels) 
             # Train on real images, or just compute loss if not trainable
             d_loss_real = discriminator.train_on_batch(X, y)
 
@@ -79,21 +80,20 @@ def train(batchSize):
             noise = np.random.normal(0, 1, (batchSize, 100))
             generated_images = generator.predict(noise, verbose=0)
             # Add noise to make it harder for discriminator
-            X = addNoise(generated_images)
-            y = getFakeLabels(batchSize)
+            X = addNoise(generated_images) if addNoiseToDiscriminator else generated_images
+            y = getFakeLabels(batchSize, soft=softLabels)
             # Train on fake images, or just compute loss if not trainable
             d_loss_fake = discriminator.train_on_batch(X, y)
 
             ##### GENERATOR TRAINING #####
             # Generator is trained twice because the discriminator is too
             for i in range(2):
-                # Flipped labels trick: max(log(D)) instead of min(log(1-D))
-                y = getTrueLabels(batchSize, flipped=False)
                 shouldDiscriminatorBeTrained = discriminator.trainable
                 # Always put as not trainable first
                 discriminator.trainable = False
                 # Train generator, or just compute loss if not trainable
                 noise = np.random.uniform(-1, 1, (batchSize, 100))
+                y = getTrueLabels(batchSize, soft=softLabels, flipped=flipLabels)
                 g_loss = discriminator_on_generator.train_on_batch(noise, y)
                 # Restore true value of trainable
                 discriminator.trainable = shouldDiscriminatorBeTrained
@@ -127,6 +127,14 @@ def train(batchSize):
                 print "Saving models..."
                 generator.save_weights('Models/generator', True)
                 discriminator.save_weights('Models/discriminator', True)
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", type=str)
+    parser.add_argument("--batchSize", type=int, default=128)
+    parser.set_defaults(nice=False)
+    args = parser.parse_args()
+    return args
 
 if __name__ == "__main__":
     args = get_args()
