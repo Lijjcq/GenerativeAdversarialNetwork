@@ -4,6 +4,15 @@ from PIL import Image
 import cv2
 from config import imageSize, generatedImagesPath
 
+# From [0;255] to [-1;1]
+def toData(img):
+    return img.astype(float) * 2/255. - 1.
+
+# From [-1;1] to [0;255]
+def toImage(img):
+    img = (img+1.)*255./2.
+    return img.astype(np.uint8)
+
 # Puts generated images in a grid for display
 def combine_images(generated_images):
     nbImages = generated_images.shape[0]
@@ -19,5 +28,5 @@ def combine_images(generated_images):
 # Saves imageSize generated images on disk
 def saveGeneratedImages(generated_images, name):
     img = combine_images(generated_images)
-    img = img*255.
-    cv2.imwrite(generatedImagesPath+name+".png",img.astype(np.uint8))
+    img = toImage(img)
+    cv2.imwrite(generatedImagesPath+name+".png",img)

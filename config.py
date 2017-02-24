@@ -1,4 +1,4 @@
-imageSize = 128
+imageSize = 64
 
 datasetPath = "Dataset/"
 generatedImagesPath = "GeneratedImages/"
