@@ -1,10 +1,3 @@
-""" 
-Useful links
-http://torch.ch/blog/2015/11/13/gan.html
-https://github.com/Newmu/dcgan_code
-https://github.com/soumith/ganhacks
-"""
-
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import Reshape
