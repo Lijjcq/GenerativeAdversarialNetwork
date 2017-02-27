@@ -51,10 +51,10 @@ def getTrueLabels(batchSize, soft=False, flipped=False):
 # Soft labels
 def getFakeLabels(batchSize, soft=False):
     if soft:
-        return np.random.uniform(0., .2, (batchSize))
+        return np.zeros(batchSize)#np.random.uniform(0., .2, (batchSize))
     else:
         return np.zeros(batchSize)
-        
+
 if __name__ == "__main__":
     X_train, _ = loadDataset()
     visualizeDataset(X_train)
